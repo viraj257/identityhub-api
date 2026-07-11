@@ -2,6 +2,7 @@ package com.viraj.identityhub_api.service;
 
 import java.util.List;
 
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import com.viraj.identityhub_api.exception.ResourceNotFoundException;
@@ -13,7 +14,17 @@ import com.viraj.identityhub_api.mapper.EmployeeMapper;
 import com.viraj.identityhub_api.repository.AppGroupRepository;
 import com.viraj.identityhub_api.repository.EmployeeRepository;
 import com.viraj.identityhub_api.repository.RoleRepository;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import java.io.IOException;
+import java.io.PrintWriter;
 
+import jakarta.servlet.http.HttpServletResponse;
+
+import org.apache.commons.csv.CSVFormat;
+import org.apache.commons.csv.CSVPrinter;
 @Service
 public class EmployeeService {
 
@@ -172,6 +183,160 @@ public class EmployeeService {
         employee.setStatus("ACTIVE");
 
         return repository.save(employee);
+    }
+    
+    /*-------------------------------------------------------
+     * Search APIs
+     -------------------------------------------------------*/
+
+    public List<EmployeeDTO> searchByUsername(String username) {
+
+        return repository.findByUsernameContainingIgnoreCase(username)
+                .stream()
+                .map(EmployeeMapper::toDTO)
+                .toList();
+    }
+
+    public List<EmployeeDTO> searchByEmail(String email) {
+
+        return repository.findByEmailContainingIgnoreCase(email)
+                .stream()
+                .map(EmployeeMapper::toDTO)
+                .toList();
+    }
+
+    public List<EmployeeDTO> searchByDepartment(String department) {
+
+        return repository.findByDepartmentContainingIgnoreCase(department)
+                .stream()
+                .map(EmployeeMapper::toDTO)
+                .toList();
+    }
+
+    public List<EmployeeDTO> searchByStatus(String status) {
+
+        return repository.findByStatusIgnoreCase(status)
+                .stream()
+                .map(EmployeeMapper::toDTO)
+                .toList();
+    }
+
+    public List<EmployeeDTO> searchByDepartmentAndStatus(String department,
+                                                         String status) {
+
+        return repository
+                .findByDepartmentContainingIgnoreCaseAndStatusIgnoreCase(department,
+                        status)
+                .stream()
+                .map(EmployeeMapper::toDTO)
+                .toList();
+    }
+
+    public List<EmployeeDTO> searchByKeyword(String keyword) {
+
+        return repository
+                .findByUsernameContainingIgnoreCaseOrFirstNameContainingIgnoreCaseOrLastNameContainingIgnoreCase(
+                        keyword,
+                        keyword,
+                        keyword)
+                .stream()
+                .map(EmployeeMapper::toDTO)
+                .toList();
+    }
+    
+    /*-------------------------------------------------------
+     * Pagination + Sorting
+     -------------------------------------------------------*/
+
+    public Page<EmployeeDTO> getEmployees(int page,
+                                          int size,
+                                          String sortBy,
+                                          String direction) {
+
+        Sort sort = direction.equalsIgnoreCase("desc")
+                ? Sort.by(sortBy).descending()
+                : Sort.by(sortBy).ascending();
+
+        Pageable pageable = PageRequest.of(page, size, sort);
+
+        return repository.findAll(pageable)
+                .map(EmployeeMapper::toDTO);
+    }
+    
+    /*-------------------------------------------------------
+     * Bulk Provisioning
+     -------------------------------------------------------*/
+
+    public List<Employee> saveEmployees(List<Employee> employees) {
+        return repository.saveAll(employees);
+    }
+    
+    public List<Employee> enableEmployees(List<Long> employeeIds) {
+
+        List<Employee> employees = repository.findAllById(employeeIds);
+
+        employees.forEach(employee -> employee.setStatus("ACTIVE"));
+
+        return repository.saveAll(employees);
+    }
+    
+    public List<Employee> disableEmployees(List<Long> employeeIds) {
+
+        List<Employee> employees = repository.findAllById(employeeIds);
+
+        employees.forEach(employee -> employee.setStatus("DISABLED"));
+
+        return repository.saveAll(employees);
+    }
+    
+    public void deleteEmployees(List<Long> employeeIds) {
+
+        repository.deleteAllById(employeeIds);
+    }
+    
+    public void exportEmployees(HttpServletResponse response) throws IOException {
+
+        response.setContentType("text/csv");
+        response.setCharacterEncoding("UTF-8");
+
+        response.setHeader(
+                "Content-Disposition",
+                "attachment; filename=employees.csv");
+
+        List<Employee> employees = repository.findAll();
+
+        PrintWriter writer = response.getWriter();
+
+        CSVPrinter csvPrinter = new CSVPrinter(
+                writer,
+                CSVFormat.DEFAULT.withHeader(
+                        "ID",
+                        "Employee ID",
+                        "Username",
+                        "First Name",
+                        "Last Name",
+                        "Email",
+                        "Department",
+                        "Designation",
+                        "Manager",
+                        "Status"));
+
+        for (Employee employee : employees) {
+
+            csvPrinter.printRecord(
+                    employee.getId(),
+                    employee.getEmployeeId(),
+                    employee.getUsername(),
+                    employee.getFirstName(),
+                    employee.getLastName(),
+                    employee.getEmail(),
+                    employee.getDepartment(),
+                    employee.getDesignation(),
+                    employee.getManager(),
+                    employee.getStatus());
+        }
+
+        csvPrinter.flush();
     }
 
 }
